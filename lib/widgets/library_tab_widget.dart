@@ -1,6 +1,5 @@
 // lib/widgets/library_tab.dart (new file)
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 class LibraryTab extends StatelessWidget {
   const LibraryTab({super.key});
@@ -49,6 +48,10 @@ class LibraryTab extends StatelessWidget {
                         cs.primary,
                         (index % 5) / 5.0,
                       )!,
+                      onTap: () {
+                        // TODO: open project, navigate, etc.
+                        debugPrint('Tapped My Project ${index + 1}');
+                      },
                     );
                   },
                 );
@@ -127,11 +130,13 @@ class _ProjectTile extends StatelessWidget {
   final String name;
   final String version;
   final Color color;
+  final VoidCallback? onTap;
 
   const _ProjectTile({
     required this.name,
     required this.version,
     required this.color,
+    this.onTap,
   });
 
   @override
@@ -169,6 +174,17 @@ class _ProjectTile extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
+                  ),
+                ),
+              ),
+              // Full-surface tappable overlay with ripple
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: onTap,
                   ),
                 ),
               ),
@@ -242,7 +258,9 @@ class _FabLibraryItem extends StatelessWidget {
                 SizedBox(
                   height: 36,
                   child: FilledButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      print("Create Project clicked");
+                    },
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Create Project'),
                   ),
