@@ -88,6 +88,10 @@ class LibraryTab extends StatelessWidget {
                         cs.primary,
                         (index % 5) / 5.0,
                       )!,
+                      onTap: () {
+                        // TODO: handle project open/navigation
+                        debugPrint('Tapped My Project ${index + 1}');
+                      },
                     );
                   },
                 );
