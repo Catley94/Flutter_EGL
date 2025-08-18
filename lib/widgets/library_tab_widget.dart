@@ -14,6 +14,46 @@ class LibraryTab extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Engine Versions grid (new)
+            Text(
+              'Engine Versions',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const tileMinWidth = 140.0;
+                const spacing = 12.0;
+                final count = (constraints.maxWidth / (tileMinWidth + spacing))
+                    .floor()
+                    .clamp(1, 6);
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: 6,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: count,
+                    mainAxisSpacing: spacing,
+                    crossAxisSpacing: spacing,
+                    childAspectRatio: 0.78,
+                  ),
+                  itemBuilder: (context, index) {
+                    return _ProjectTile(
+                      name: 'Engine Version ${index + 1}',
+                      version: 'UE 5.${(index % 3) + 1}',
+                      color: Color.lerp(
+                        const Color(0xFF1F2933),
+                        cs.primary,
+                        (index % 5) / 5.0,
+                      )!,
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 24),
             // My Projects grid (kept)
             Text(
               'My Projects',
@@ -48,10 +88,6 @@ class LibraryTab extends StatelessWidget {
                         cs.primary,
                         (index % 5) / 5.0,
                       )!,
-                      onTap: () {
-                        // TODO: open project, navigate, etc.
-                        debugPrint('Tapped My Project ${index + 1}');
-                      },
                     );
                   },
                 );
