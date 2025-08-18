@@ -1,38 +1,43 @@
 import 'package:flutter/material.dart';
+import 'library_tab_widget.dart';
+// import 'package:test_app_ui/widgets/library_tab.dart';
 
-class UnrealEngine extends StatefulWidget {
+class UnrealEngine extends StatelessWidget {
   const UnrealEngine({super.key});
 
   @override
-  State<UnrealEngine> createState() => _UnrealEngineState();
-}
-
-class _UnrealEngineState extends State<UnrealEngine> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text(
-          'Games Screen',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 20),
-        Text('Game Score: $_counter', style: const TextStyle(fontSize: 18)),
-        const SizedBox(height: 20),
-        ElevatedButton(
-          onPressed: _incrementCounter,
-          child: const Text('Increase Score'),
-        ),
-      ],
+    final cs = Theme.of(context).colorScheme;
+    return DefaultTabController(
+      length: 1,
+      child: Column(
+        children: [
+          Material(
+            color: cs.surface,
+            child: const SizedBox(
+              height: 48,
+              child: TabBar(
+                isScrollable: false,
+                indicatorSize: TabBarIndicatorSize.tab,
+                tabs: [
+                  Tab(text: 'Library'),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              color: const Color(0xFF12151A),
+              child: const TabBarView(
+                physics: NeverScrollableScrollPhysics(),
+                children: [
+                  LibraryTab(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

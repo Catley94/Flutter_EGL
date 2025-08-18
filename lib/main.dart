@@ -151,23 +151,23 @@ class _NavRailExampleState extends State<NavRailExample> {
               child: Column(
                 children: [
                   // Top header bar (Epic-like)
-                  Container(
-                    height: 56,
-                    color: Theme.of(context).colorScheme.surface,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: const [
-                        Text(
-                          'Unreal Engine',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Spacer(),
-                      ],
-                    ),
-                  ),
+                  // Container(
+                  //   height: 56,
+                  //   color: Theme.of(context).colorScheme.surface,
+                  //   padding: const EdgeInsets.symmetric(horizontal: 16),
+                  //   child: Row(
+                  //     children: const [
+                  //       // Text(
+                  //       //   'Unreal Engine',
+                  //       //   style: TextStyle(
+                  //       //     fontSize: 18,
+                  //       //     fontWeight: FontWeight.w700,
+                  //       //   ),
+                  //       // ),
+                  //       // Spacer(),
+                  //     ],
+                  //   ),
+                  // ),
                   // Content area
                   Expanded(
                     child: Container(
