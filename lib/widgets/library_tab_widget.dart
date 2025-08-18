@@ -7,73 +7,73 @@ class LibraryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // My Projects grid (new)
-          Text(
-            'My Projects',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+    return Scrollbar(
+      child: SingleChildScrollView(
+        primary: true,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // My Projects grid (kept)
+            Text(
+              'My Projects',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const tileMinWidth = 140.0;
+                const spacing = 12.0;
+                final count = (constraints.maxWidth / (tileMinWidth + spacing))
+                    .floor()
+                    .clamp(1, 6);
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: 6,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: count,
+                    mainAxisSpacing: spacing,
+                    crossAxisSpacing: spacing,
+                    childAspectRatio: 0.78,
+                  ),
+                  itemBuilder: (context, index) {
+                    return _ProjectTile(
+                      name: 'My Project ${index + 1}',
+                      version: 'UE 5.${(index % 3) + 1}',
+                      color: Color.lerp(
+                        const Color(0xFF1F2933),
+                        cs.primary,
+                        (index % 5) / 5.0,
+                      )!,
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            // Header row for filters/actions
+            Row(
+              children: [
+                Text(
+                  'Fab Library',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const tileMinWidth = 140.0;
-              const spacing = 12.0;
-              final count = (constraints.maxWidth / (tileMinWidth + spacing))
-                  .floor()
-                  .clamp(1, 6);
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: 6,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: count,
-                  mainAxisSpacing: spacing,
-                  crossAxisSpacing: spacing,
-                  // Make cells a bit taller to fit the square + label
-                  childAspectRatio: 0.78,
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Project'),
                 ),
-                itemBuilder: (context, index) {
-                  return _ProjectTile(
-                    name: 'My Project ${index + 1}',
-                    version: 'UE 5.${(index % 3) + 1}',
-                    color: Color.lerp(
-                      const Color(0xFF1F2933),
-                      cs.primary,
-                      (index % 5) / 5.0,
-                    )!,
-                  );
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          // Header row for filters/actions (placeholder)
-          Row(
-            children: [
-              Text(
-                'Fab Library',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.add),
-                label: const Text('Add Project'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Content area (responsive grid)
-          Expanded(
-            child: Container(
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Responsive grid (now non-scrollable; page scrolls instead)
+            Container(
               decoration: BoxDecoration(
                 color: cs.surface,
                 borderRadius: BorderRadius.circular(12),
@@ -81,41 +81,43 @@ class LibraryTab extends StatelessWidget {
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Responsive column count based on available width
-                  const minTileWidth = 320.0; // desired min width per item
+                  const minTileWidth = 320.0;
                   const spacing = 16.0;
-                  final crossAxisCount = (constraints.maxWidth / (minTileWidth + spacing))
-                      .floor()
-                      .clamp(1, 6);
-
+                  final crossAxisCount =
+                      (constraints.maxWidth / (minTileWidth + spacing))
+                          .floor()
+                          .clamp(1, 6);
                   return GridView.builder(
                     padding: const EdgeInsets.all(16),
+                    physics: const NeverScrollableScrollPhysics(),
+                    shrinkWrap: true,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
                       mainAxisSpacing: spacing,
                       crossAxisSpacing: spacing,
-                      // Wide "row-card": image on left, details on right
-                      // Approx height ~132, width varies -> ~2.3-2.6 aspect ratio
                       childAspectRatio: 2.4,
                     ),
                     itemCount: 12,
                     itemBuilder: (context, index) {
                       return _FabLibraryItem(
                         title: 'Starter Content Pack ${index + 1}',
-                        sizeLabel: '${(1.2 + index * 0.25).toStringAsFixed(2)} GB downloaded',
+                        sizeLabel:
+                            '${(1.2 + index * 0.25).toStringAsFixed(2)} GB downloaded',
                       );
                     },
                   );
                 },
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
 }
 
+// ... existing code ...
 class _ProjectTile extends StatelessWidget {
   final String name;
   final String version;
