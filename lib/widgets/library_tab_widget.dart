@@ -1,5 +1,6 @@
 // lib/widgets/library_tab.dart (new file)
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 class LibraryTab extends StatelessWidget {
   const LibraryTab({super.key});
@@ -86,7 +87,11 @@ class LibraryTab extends StatelessWidget {
                   final crossAxisCount =
                       (constraints.maxWidth / (minTileWidth + spacing))
                           .floor()
-                          .clamp(1, 6);
+                          .clamp(3, 5);
+                  // final computed = (constraints.maxWidth / (minTileWidth + spacing))
+                  //     .floor()
+                  //     .clamp(1, 6);
+                  // final crossAxisCount = math.max(3, computed);
                   return GridView.builder(
                     padding: const EdgeInsets.all(16),
                     physics: const NeverScrollableScrollPhysics(),

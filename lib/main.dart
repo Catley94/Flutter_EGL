@@ -1,9 +1,25 @@
+// dart
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:window_size/window_size.dart' as window_size;
 import 'package:test_app_ui/widgets/unreal_engine.dart';
 
-/// Flutter code sample for [NavigationRail].
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() => runApp(const NavigationRailExampleApp());
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    const fixedSize = Size(1400, 800); // pick your fixed size
+    // Optional: set initial position/size before locking
+    // window_size.setWindowFrame(const Rect.fromLTWH(100, 100, fixedSize.width, fixedSize.height));
+    window_size.setWindowMinSize(fixedSize);
+    window_size.setWindowMaxSize(fixedSize);
+  }
+
+  runApp(const NavigationRailExampleApp());
+}
+
+
 
 class NavigationRailExampleApp extends StatelessWidget {
   const NavigationRailExampleApp({super.key});
