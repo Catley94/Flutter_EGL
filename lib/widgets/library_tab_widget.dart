@@ -57,7 +57,7 @@ class LibraryTab extends StatelessWidget {
           Row(
             children: [
               Text(
-                'Your Unreal Engine Library',
+                'Fab Library',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -71,7 +71,7 @@ class LibraryTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // Content area (placeholder list)
+          // Content area (responsive grid)
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -79,19 +79,32 @@ class LibraryTab extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFF1A2027)),
               ),
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: 5,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: Text('Project ${index + 1}'),
-                    subtitle: const Text('Unreal Engine 5.x'),
-                    trailing: FilledButton(
-                      onPressed: () {},
-                      child: const Text('Open'),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Responsive column count based on available width
+                  const minTileWidth = 320.0; // desired min width per item
+                  const spacing = 16.0;
+                  final crossAxisCount = (constraints.maxWidth / (minTileWidth + spacing))
+                      .floor()
+                      .clamp(1, 6);
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      mainAxisSpacing: spacing,
+                      crossAxisSpacing: spacing,
+                      // Wide "row-card": image on left, details on right
+                      // Approx height ~132, width varies -> ~2.3-2.6 aspect ratio
+                      childAspectRatio: 2.4,
                     ),
+                    itemCount: 12,
+                    itemBuilder: (context, index) {
+                      return _FabLibraryItem(
+                        title: 'Starter Content Pack ${index + 1}',
+                        sizeLabel: '${(1.2 + index * 0.25).toStringAsFixed(2)} GB downloaded',
+                      );
+                    },
                   );
                 },
               ),
@@ -165,6 +178,80 @@ class _ProjectTile extends StatelessWidget {
               ),
         ),
       ],
+    );
+  }
+}
+
+class _FabLibraryItem extends StatelessWidget {
+  final String title;
+  final String sizeLabel;
+
+  const _FabLibraryItem({
+    required this.title,
+    required this.sizeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1115),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1A2027)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left: image placeholder
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 112,
+              height: 112,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F2933),
+                border: Border.all(color: const Color(0xFF1A2027)),
+              ),
+              child: const Icon(Icons.image, size: 40, color: Color(0xFF9AA4AF)),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Right: title, button, size stacked vertically
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 36,
+                  child: FilledButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Create Project'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  sizeLabel,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
