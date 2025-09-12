@@ -43,9 +43,14 @@ class FabProjectVersion {
   FabProjectVersion({required this.artifactId, required this.engineVersions, required this.targetPlatforms});
 
   factory FabProjectVersion.fromJson(Map<String, dynamic> json) {
+    final versions = (json['engineVersions'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
+    // Reverse so newest (typically last from backend) shows first in UI
+    final reversed = versions.reversed.toList();
     return FabProjectVersion(
       artifactId: json['artifactId']?.toString() ?? '',
-      engineVersions: (json['engineVersions'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
+      engineVersions: reversed,
       targetPlatforms: (json['targetPlatforms'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
     );
   }
@@ -101,7 +106,19 @@ class FabAsset {
       }
     }
     if (engines.isEmpty) return '';
-    final sorted = engines.toList()..sort();
+    // Sort by major.minor descending (most recent first)
+    int cmp(String a, String b) {
+      int parseOrZero(String s) => int.tryParse(s) ?? 0;
+      List<String> as = a.split('.');
+      List<String> bs = b.split('.');
+      final amaj = parseOrZero(as.isNotEmpty ? as[0] : '0');
+      final amin = parseOrZero(as.length > 1 ? as[1] : '0');
+      final bmaj = parseOrZero(bs.isNotEmpty ? bs[0] : '0');
+      final bmin = parseOrZero(bs.length > 1 ? bs[1] : '0');
+      if (amaj != bmaj) return bmaj.compareTo(amaj);
+      return bmin.compareTo(amin);
+    }
+    final sorted = engines.toList()..sort(cmp);
     // Keep at most 4 entries to avoid overflow
     final shown = sorted.take(4).join(', ');
     return 'UE: $shown${sorted.length > 4 ? '…' : ''}';
