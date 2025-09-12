@@ -28,6 +28,29 @@ class ApiService {
     return engines;
   }
 
+  Future<OpenEngineResult> openUnrealEngine({required String version}) async {
+    final uri = _uri('/open-unreal-engine', {'version': version});
+    final res = await http.get(uri);
+    final body = res.body;
+    if (res.statusCode != 200) {
+      // Try to parse message from JSON; otherwise surface body
+      try {
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final msg = data['message']?.toString() ?? body;
+        throw Exception('Failed to open Unreal Engine: ${res.statusCode} $msg');
+      } catch (_) {
+        throw Exception('Failed to open Unreal Engine: ${res.statusCode} $body');
+      }
+    }
+    try {
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return OpenEngineResult.fromJson(data);
+    } catch (_) {
+      // Backend might return plain text; treat 200 as success with message
+      return OpenEngineResult(launched: true, message: body.isNotEmpty ? body : 'Launched Unreal Engine');
+    }
+  }
+
   Future<List<UnrealProjectInfo>> listUnrealProjects({String? baseDir}) async {
     final uri = _uri('/list-unreal-projects', baseDir != null ? {'base': baseDir} : null);
     final res = await http.get(uri);
@@ -108,6 +131,20 @@ class OpenProjectResult {
       engineVersion: json['engine_version'] as String?,
       editorPath: json['editor_path'] as String?,
       project: json['project'] as String? ?? '',
+      message: json['message'] as String? ?? '',
+    );
+  }
+}
+
+class OpenEngineResult {
+  final bool launched;
+  final String message;
+
+  OpenEngineResult({required this.launched, required this.message});
+
+  factory OpenEngineResult.fromJson(Map<String, dynamic> json) {
+    return OpenEngineResult(
+      launched: json['launched'] as bool? ?? false,
       message: json['message'] as String? ?? '',
     );
   }

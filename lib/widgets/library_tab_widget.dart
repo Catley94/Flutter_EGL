@@ -129,9 +129,29 @@ class _LibraryTabState extends State<LibraryTab> {
                             cs.primary,
                             (index % 5) / 5.0,
                           )!,
-                          onTap: () {
-                            // Optional: could filter projects by engine, not required now
-                            debugPrint('Engine tapped: ${e.name} (${e.version})');
+                          onTap: () async {
+                            if (_opening) return;
+                            if (e.version.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Cannot open Unreal Engine: version is unknown')),
+                              );
+                              return;
+                            }
+                            setState(() => _opening = true);
+                            try {
+                              final result = await _api.openUnrealEngine(version: e.version);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(result.message.isNotEmpty ? result.message : (result.launched ? 'Launched Unreal Engine' : 'Failed to launch Unreal Engine'))),
+                              );
+                            } catch (err) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error opening Unreal Engine: $err')),
+                              );
+                            } finally {
+                              if (mounted) setState(() => _opening = false);
+                            }
                           },
                         );
                       },
