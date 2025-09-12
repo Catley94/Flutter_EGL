@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 class FabLibraryItem extends StatelessWidget {
   final String title;
   final String sizeLabel;
+  final bool isCompleteProject;
 
   const FabLibraryItem({
     required this.title,
     required this.sizeLabel,
+    required this.isCompleteProject,
   });
 
   @override
@@ -54,10 +56,14 @@ class FabLibraryItem extends StatelessWidget {
                   height: 36,
                   child: FilledButton.icon(
                     onPressed: () {
-                      print("Create Project clicked");
+                      if (isCompleteProject) {
+                        print("Create Project clicked");
+                      } else {
+                        print("Import Asset clicked");
+                      }
                     },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Create Project'),
+                    icon: Icon(isCompleteProject ? Icons.add : Icons.download, size: 18),
+                    label: Text(isCompleteProject ? 'Create Project' : 'Import Asset'),
                   ),
                 ),
                 const SizedBox(height: 8),
