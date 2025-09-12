@@ -13,6 +13,8 @@ class LibraryTab extends StatefulWidget {
 }
 
 class _LibraryTabState extends State<LibraryTab> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<_FabAssetsGridState> _fabKey = GlobalKey<_FabAssetsGridState>();
   late final ApiService _api;
@@ -32,10 +34,7 @@ class _LibraryTabState extends State<LibraryTab> {
   }
 
   void _requestMoreFabItems() {
-    final state = _fabKey.currentState;
-    if (state == null) return;
-    final total = state.widget.assets.length;
-    state.increaseVisible(60, total);
+    // Pagination mode: no-op (infinite scroll disabled)
   }
 
   void _onScroll() {
@@ -51,6 +50,7 @@ class _LibraryTabState extends State<LibraryTab> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -245,7 +245,34 @@ class _LibraryTabState extends State<LibraryTab> {
                         fontWeight: FontWeight.w700,
                       ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 16),
+                // Search bar
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _query = v),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: 'Search assets...',
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                        suffixIcon: _query.isNotEmpty
+                            ? IconButton(
+                                tooltip: 'Clear',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _query = '');
+                                },
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
                 FilledButton.icon(
                   onPressed: () {},
                   icon: const Icon(Icons.add),
@@ -285,9 +312,25 @@ class _LibraryTabState extends State<LibraryTab> {
                         );
                       }
                       final assets = snapshot.data ?? const <FabAsset>[];
+                      final q = _query.trim().toLowerCase();
+                      final filtered = q.isEmpty
+                          ? assets
+                          : assets.where((a) {
+                              final title = a.title.toLowerCase();
+                              final id = a.assetId.toLowerCase();
+                              final ns = a.assetNamespace.toLowerCase();
+                              final label = a.shortEngineLabel.toLowerCase();
+                              return title.contains(q) || id.contains(q) || ns.contains(q) || label.contains(q);
+                            }).toList();
+                      if (filtered.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('No assets match your search.'),
+                        );
+                      }
                       return _FabAssetsGrid(
                         key: _fabKey,
-                        assets: assets,
+                        assets: filtered,
                         crossAxisCount: crossAxisCount,
                         spacing: spacing,
                         onLoadMore: _requestMoreFabItems,
@@ -317,53 +360,82 @@ class _FabAssetsGrid extends StatefulWidget {
 }
 
 class _FabAssetsGridState extends State<_FabAssetsGrid> {
-  // expose a getter for parent to increase visible count
+  // Kept for compatibility; no-op in pagination mode
   void increaseVisible(int by, int total) {
-    setState(() {
-      _visibleCount = (_visibleCount + by).clamp(0, total);
-    });
+    // no-op
   }
-  static const int _initialBatch = 60;
-  static const int _pageSize = 60;
-  int _visibleCount = _initialBatch;
+
+  static const int _pageSize = 40; // max assets per page
+  int _page = 0;
 
   @override
   void didUpdateWidget(covariant _FabAssetsGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.assets.length != widget.assets.length) {
-      // Reset or expand to show all if fewer than current
-      _visibleCount = _initialBatch;
+      // Reset to first page when data changes
+      _page = 0;
     }
+    // Clamp page if fewer total pages now
+    final totalPages = (widget.assets.isEmpty) ? 1 : ((widget.assets.length - 1) ~/ _pageSize + 1);
+    if (_page >= totalPages) _page = totalPages - 1;
   }
 
   @override
   Widget build(BuildContext context) {
     final total = widget.assets.length;
-    final show = total <= _visibleCount ? total : _visibleCount;
+    final totalPages = total == 0 ? 1 : ((total - 1) ~/ _pageSize + 1);
+    final start = (_page * _pageSize).clamp(0, total);
+    final end = (start + _pageSize).clamp(0, total);
+    final count = end - start;
 
-    // Note: The outer SingleChildScrollView handles scrolling. We can't rely on
-    // inner scroll notifications. Instead, LibraryTab listens via ScrollController
-    // and triggers onLoadMore; here we just render up to _visibleCount.
-    return GridView.builder(
-        padding: const EdgeInsets.all(16),
-        physics: const NeverScrollableScrollPhysics(),
-        shrinkWrap: true,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: widget.crossAxisCount,
-          mainAxisSpacing: widget.spacing,
-          crossAxisSpacing: widget.spacing,
-          childAspectRatio: 2.4,
-        ),
-        itemCount: show,
-        itemBuilder: (context, index) {
-          final a = widget.assets[index];
-          return FabLibraryItem(
-            title: a.title.isNotEmpty ? a.title : a.assetId,
-            sizeLabel: a.shortEngineLabel.isNotEmpty ? a.shortEngineLabel : '${a.assetNamespace}/${a.assetId}',
-            isCompleteProject: a.isCompleteProject,
-          );
-        },
-      );
+    Widget grid = GridView.builder(
+      padding: const EdgeInsets.all(16),
+      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: widget.crossAxisCount,
+        mainAxisSpacing: widget.spacing,
+        crossAxisSpacing: widget.spacing,
+        childAspectRatio: 2.4,
+      ),
+      itemCount: count,
+      itemBuilder: (context, index) {
+        final a = widget.assets[start + index];
+        return FabLibraryItem(
+          title: a.title.isNotEmpty ? a.title : a.assetId,
+          sizeLabel: a.shortEngineLabel.isNotEmpty ? a.shortEngineLabel : '${a.assetNamespace}/${a.assetId}',
+          isCompleteProject: a.isCompleteProject,
+        );
+      },
+    );
+
+    Widget controls = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Row(
+        children: [
+          Text('Page ${_page + 1} of $totalPages'),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Previous page',
+            onPressed: _page > 0 ? () => setState(() => _page -= 1) : null,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          IconButton(
+            tooltip: 'Next page',
+            onPressed: (_page + 1) < totalPages ? () => setState(() => _page += 1) : null,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        grid,
+        controls,
+      ],
+    );
   }
 }
 
