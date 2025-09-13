@@ -17,6 +17,7 @@ class _LibraryTabState extends State<LibraryTab> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
   String _versionFilter = '';
+  bool _onlyCompleteProjects = false;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<_FabAssetsGridState> _fabKey = GlobalKey<_FabAssetsGridState>();
   late final ApiService _api;
@@ -346,18 +347,29 @@ class _LibraryTabState extends State<LibraryTab> {
                             child: Text('UE $v'),
                           )),
                     ];
-                    return ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 200),
-                      child: DropdownButtonFormField<String>(
-                        value: _versionFilter.isEmpty ? '' : _versionFilter,
-                        items: items,
-                        onChanged: (v) => setState(() => _versionFilter = v ?? ''),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: 'Filter by version',
-                          border: OutlineInputBorder(),
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 200),
+                          child: DropdownButtonFormField<String>(
+                            value: _versionFilter.isEmpty ? '' : _versionFilter,
+                            items: items,
+                            onChanged: (v) => setState(() => _versionFilter = v ?? ''),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Filter by version',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        FilterChip(
+                          label: const Text('Complete projects only'),
+                          selected: _onlyCompleteProjects,
+                          onSelected: (v) => setState(() => _onlyCompleteProjects = v),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -405,6 +417,10 @@ class _LibraryTabState extends State<LibraryTab> {
                               final label = a.shortEngineLabel.toLowerCase();
                               return title.contains(q) || id.contains(q) || ns.contains(q) || label.contains(q);
                             }).toList();
+                      // Apply COMPLETE_PROJECT filter if enabled
+                      if (_onlyCompleteProjects) {
+                        filtered = filtered.where((a) => a.isCompleteProject).toList();
+                      }
                       // Apply version filter if set
                       final vf = _versionFilter.trim();
                       if (vf.isNotEmpty) {
