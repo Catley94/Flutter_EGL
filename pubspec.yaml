@@ -37,6 +37,7 @@ dependencies:
   window_size: ^0.1.0
   http: ^1.2.2
   url_launcher: ^6.3.0
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:
