@@ -7,6 +7,8 @@ class FabLibraryItem extends StatelessWidget {
   final VoidCallback? onPrimaryPressed;
   final bool isBusy;
   final bool downloaded;
+  final String? thumbnailUrl;
+  final VoidCallback? onTap;
 
   const FabLibraryItem({
     required this.title,
@@ -15,21 +17,26 @@ class FabLibraryItem extends StatelessWidget {
     this.onPrimaryPressed,
     this.isBusy = false,
     this.downloaded = false,
+    this.thumbnailUrl,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1115),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1A2027)),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F1115),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF1A2027)),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Left: image placeholder with optional downloaded badge
           Stack(
             clipBehavior: Clip.none,
@@ -43,7 +50,17 @@ class FabLibraryItem extends StatelessWidget {
                     color: const Color(0xFF1F2933),
                     border: Border.all(color: const Color(0xFF1A2027)),
                   ),
-                  child: const Icon(Icons.image, size: 40, color: Color(0xFF9AA4AF)),
+                  child: (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+                      ? Image.network(
+                          thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 40, color: Color(0xFF9AA4AF)),
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
+                          },
+                        )
+                      : const Icon(Icons.image, size: 40, color: Color(0xFF9AA4AF)),
                 ),
               ),
               if (downloaded)
@@ -112,6 +129,7 @@ class FabLibraryItem extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

@@ -4,6 +4,7 @@ import 'fab_library_item.dart';
 import '../services/api_service.dart';
 import '../models/unreal.dart';
 import '../models/fab.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LibraryTab extends StatefulWidget {
   const LibraryTab({super.key});
@@ -497,6 +498,138 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
   final ApiService _api = ApiService();
   final Set<int> _busy = <int>{};
 
+  String? _pickThumbnailUrl(FabAsset a) {
+    if (a.images.isEmpty) return null;
+    for (final img in a.images) {
+      final t = (img.type ?? '').toLowerCase();
+      if (t.contains('thumb')) return img.url;
+    }
+    return a.images.first.url;
+  }
+
+  Future<void> _launchExternal(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid URL')),
+      );
+      return;
+    }
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to launch: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAssetGalleryDialog(BuildContext context, FabAsset a) async {
+    final images = a.images;
+    int index = 0;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateSB) {
+            return AlertDialog(
+              contentPadding: const EdgeInsets.all(12),
+              title: Text(a.title.isNotEmpty ? a.title : a.assetId),
+              content: Builder(
+                builder: (context) {
+                  final size = MediaQuery.of(context).size;
+                  final dialogWidth = (size.width * 0.9).clamp(300.0, 900.0);
+                  final dialogHeight = (size.height * 0.9).clamp(300.0, 700.0);
+                  return SizedBox(
+                    width: dialogWidth,
+                    height: dialogHeight,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: images.isEmpty
+                                ? Container(
+                                    color: const Color(0xFF1F2933),
+                                    child: const Center(child: Icon(Icons.image, size: 48, color: Color(0xFF9AA4AF))),
+                                  )
+                                : PageView.builder(
+                                    itemCount: images.length,
+                                    onPageChanged: (i) => setStateSB(() => index = i),
+                                    itemBuilder: (context, i) {
+                                      final url = images[i].url;
+                                      return Image.network(
+                                        url,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (c, e, s) => const Center(child: Icon(Icons.broken_image, size: 48, color: Color(0xFF9AA4AF))),
+                                        loadingBuilder: (c, child, progress) {
+                                          if (progress == null) return child;
+                                          return const Center(child: SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 2)));
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ),
+                    const SizedBox(height: 8),
+                    if (images.length > 1)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(images.length, (i) {
+                          final active = i == index;
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: active ? 10 : 8,
+                            height: active ? 10 : 8,
+                            decoration: BoxDecoration(
+                              color: active ? Theme.of(context).colorScheme.primary : const Color(0xFF39424C),
+                              shape: BoxShape.circle,
+                            ),
+                          );
+                        }),
+                      ),
+                    const SizedBox(height: 12),
+                    Text(
+                      a.description.isNotEmpty ? a.description : 'No description provided.',
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    if (a.shortEngineLabel.isNotEmpty)
+                      Text(a.shortEngineLabel, style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              );
+            },
+          ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Close'),
+                ),
+                if ((a.url ?? '').isNotEmpty)
+                  FilledButton.icon(
+                    onPressed: () => _launchExternal(a.url!),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('View on FAB.com'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<_ImportParams?> _promptImport(BuildContext context, FabAsset asset) async {
     final subdirCtrl = TextEditingController(text: '');
     bool overwrite = false;
@@ -781,6 +914,8 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
           isCompleteProject: a.isCompleteProject,
           downloaded: a.anyDownloaded,
           isBusy: _busy.contains(globalIndex),
+          thumbnailUrl: _pickThumbnailUrl(a),
+          onTap: () => _showAssetGalleryDialog(context, a),
           onPrimaryPressed: () async {
             if (a.isCompleteProject) {
               final params = await _promptCreateProject(context, a);
