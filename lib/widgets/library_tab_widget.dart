@@ -63,6 +63,12 @@ class _LibraryTabState extends State<LibraryTab> {
     _fabFuture = _api.getFabList();
   }
 
+  void _refreshProjects() {
+    setState(() {
+      _projectsFuture = _api.listUnrealProjects();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -354,6 +360,7 @@ class _LibraryTabState extends State<LibraryTab> {
                         crossAxisCount: crossAxisCount,
                         spacing: spacing,
                         onLoadMore: _requestMoreFabItems,
+                        onProjectsChanged: _refreshProjects,
                       );
                     },
                   );
@@ -373,7 +380,8 @@ class _FabAssetsGrid extends StatefulWidget {
   final List<FabAsset> assets;
   final int crossAxisCount;
   final double spacing;
-  const _FabAssetsGrid({Key? key, required this.assets, required this.crossAxisCount, required this.spacing, this.onLoadMore}) : super(key: key);
+  final VoidCallback? onProjectsChanged;
+  const _FabAssetsGrid({Key? key, required this.assets, required this.crossAxisCount, required this.spacing, this.onLoadMore, this.onProjectsChanged}) : super(key: key);
 
   @override
   State<_FabAssetsGrid> createState() => _FabAssetsGridState();
@@ -674,6 +682,10 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(msg)),
                 );
+                if (ok && !params.dryRun) {
+                  // Notify parent to refresh projects list
+                  widget.onProjectsChanged?.call();
+                }
               } catch (e) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
