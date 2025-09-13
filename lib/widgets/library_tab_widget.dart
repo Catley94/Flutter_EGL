@@ -15,6 +15,7 @@ class LibraryTab extends StatefulWidget {
 class _LibraryTabState extends State<LibraryTab> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
+  String _versionFilter = '';
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<_FabAssetsGridState> _fabKey = GlobalKey<_FabAssetsGridState>();
   late final ApiService _api;
@@ -305,10 +306,59 @@ class _LibraryTabState extends State<LibraryTab> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                FilledButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Project'),
+                // Version filter dropdown
+                FutureBuilder<List<FabAsset>>(
+                  future: _fabFuture,
+                  builder: (context, snapshot) {
+                    final assets = snapshot.data ?? const <FabAsset>[];
+                    // collect unique versions like '5.6', '5.5'
+                    final versions = <String>{};
+                    for (final a in assets) {
+                      for (final pv in a.projectVersions) {
+                        for (final ev in pv.engineVersions) {
+                          final parts = ev.split('_');
+                          if (parts.length > 1) {
+                            versions.add(parts[1]);
+                          }
+                        }
+                      }
+                    }
+                    int cmp(String a, String b) {
+                      int parseOrZero(String s) => int.tryParse(s) ?? 0;
+                      final as = a.split('.');
+                      final bs = b.split('.');
+                      final amaj = parseOrZero(as.isNotEmpty ? as[0] : '0');
+                      final amin = parseOrZero(as.length > 1 ? as[1] : '0');
+                      final bmaj = parseOrZero(bs.isNotEmpty ? bs[0] : '0');
+                      final bmin = parseOrZero(bs.length > 1 ? bs[1] : '0');
+                      if (amaj != bmaj) return bmaj.compareTo(amaj);
+                      return bmin.compareTo(amin);
+                    }
+                    final sorted = versions.toList()..sort(cmp);
+                    final items = <DropdownMenuItem<String>>[
+                      const DropdownMenuItem<String>(
+                        value: '',
+                        child: Text('All versions'),
+                      ),
+                      ...sorted.map((v) => DropdownMenuItem<String>(
+                            value: v,
+                            child: Text('UE $v'),
+                          )),
+                    ];
+                    return ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: DropdownButtonFormField<String>(
+                        value: _versionFilter.isEmpty ? '' : _versionFilter,
+                        items: items,
+                        onChanged: (v) => setState(() => _versionFilter = v ?? ''),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: 'Filter by version',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -345,7 +395,7 @@ class _LibraryTabState extends State<LibraryTab> {
                       }
                       final assets = snapshot.data ?? const <FabAsset>[];
                       final q = _query.trim().toLowerCase();
-                      final filtered = q.isEmpty
+                      List<FabAsset> filtered = q.isEmpty
                           ? assets
                           : assets.where((a) {
                               final title = a.title.toLowerCase();
@@ -354,6 +404,20 @@ class _LibraryTabState extends State<LibraryTab> {
                               final label = a.shortEngineLabel.toLowerCase();
                               return title.contains(q) || id.contains(q) || ns.contains(q) || label.contains(q);
                             }).toList();
+                      // Apply version filter if set
+                      final vf = _versionFilter.trim();
+                      if (vf.isNotEmpty) {
+                        bool supportsVersion(FabAsset a, String v) {
+                          for (final pv in a.projectVersions) {
+                            for (final ev in pv.engineVersions) {
+                              final parts = ev.split('_');
+                              if (parts.length > 1 && parts[1] == v) return true;
+                            }
+                          }
+                          return false;
+                        }
+                        filtered = filtered.where((a) => supportsVersion(a, vf)).toList();
+                      }
                       if (filtered.isEmpty) {
                         return const Padding(
                           padding: EdgeInsets.all(16.0),
