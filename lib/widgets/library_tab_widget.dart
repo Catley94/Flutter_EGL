@@ -434,46 +434,93 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
   final Set<int> _busy = <int>{};
 
   Future<_ImportParams?> _promptImport(BuildContext context, FabAsset asset) async {
-    final projectCtrl = TextEditingController(text: 'MyGame');
     final subdirCtrl = TextEditingController(text: '');
     bool overwrite = false;
+
+    String? selectedProject; // will hold selected .uproject path
 
     final result = await showDialog<_ImportParams>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Import Asset'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: projectCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Project (name or .uproject path)',
-                  hintText: 'e.g., MyGame or /path/to/MyGame.uproject',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FutureBuilder<List<UnrealProjectInfo>>(
+                  future: _api.listUnrealProjects(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          children: [
+                            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                            SizedBox(width: 12),
+                            Text('Loading projects...'),
+                          ],
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('Failed to load projects: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
+                      );
+                    }
+                    final projects = snapshot.data ?? const <UnrealProjectInfo>[];
+                    if (projects.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('No Unreal projects found.'),
+                      );
+                    }
+                    // Default to first project if none selected yet
+                    selectedProject ??= projects.first.uprojectFile.isNotEmpty
+                        ? projects.first.uprojectFile
+                        : projects.first.path;
+                    return DropdownButtonFormField<String>(
+                      value: selectedProject,
+                      items: projects.map((p) {
+                        final value = p.uprojectFile.isNotEmpty ? p.uprojectFile : p.path;
+                        final label = p.name.isNotEmpty ? p.name : value;
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(label, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        selectedProject = v;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Select Project',
+                      ),
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: subdirCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Target subfolder (optional)',
-                  hintText: 'e.g., Imported/Industry',
+                const SizedBox(height: 8),
+                TextField(
+                  controller: subdirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Target subfolder (optional)',
+                    hintText: 'e.g., Imported/Industry',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              StatefulBuilder(
-                builder: (context, setState) {
-                  return CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Overwrite existing files'),
-                    value: overwrite,
-                    onChanged: (v) => setState(() => overwrite = v ?? false),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  );
-                },
-              ),
-            ],
+                const SizedBox(height: 8),
+                StatefulBuilder(
+                  builder: (context, setState) {
+                    return CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Overwrite existing files'),
+                      value: overwrite,
+                      onChanged: (v) => setState(() => overwrite = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -482,11 +529,11 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
             ),
             FilledButton(
               onPressed: () {
-                final project = projectCtrl.text.trim();
+                final project = (selectedProject ?? '').trim();
                 final subdir = subdirCtrl.text.trim();
                 if (project.isEmpty) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('Please enter a project name or .uproject path')),
+                    const SnackBar(content: Text('Please select a project')),
                   );
                   return;
                 }
