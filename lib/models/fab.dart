@@ -39,8 +39,14 @@ class FabProjectVersion {
   final String artifactId;
   final List<String> engineVersions; // e.g., ["UE_5.3", "UE_5.4"]
   final List<String> targetPlatforms;
+  final bool downloaded;
 
-  FabProjectVersion({required this.artifactId, required this.engineVersions, required this.targetPlatforms});
+  FabProjectVersion({
+    required this.artifactId,
+    required this.engineVersions,
+    required this.targetPlatforms,
+    this.downloaded = false,
+  });
 
   factory FabProjectVersion.fromJson(Map<String, dynamic> json) {
     final versions = (json['engineVersions'] as List<dynamic>? ?? [])
@@ -52,6 +58,7 @@ class FabProjectVersion {
       artifactId: json['artifactId']?.toString() ?? '',
       engineVersions: reversed,
       targetPlatforms: (json['targetPlatforms'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
+      downloaded: json['downloaded'] is bool ? (json['downloaded'] as bool) : (json['downloaded']?.toString().toLowerCase() == 'true'),
     );
   }
 }
@@ -78,6 +85,8 @@ class FabAsset {
     required this.images,
     required this.projectVersions,
   });
+
+  bool get anyDownloaded => projectVersions.any((v) => v.downloaded);
 
   factory FabAsset.fromJson(Map<String, dynamic> json) {
     return FabAsset(

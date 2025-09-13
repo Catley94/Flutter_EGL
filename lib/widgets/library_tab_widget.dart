@@ -69,6 +69,12 @@ class _LibraryTabState extends State<LibraryTab> {
     });
   }
 
+  void _refreshFabList() {
+    setState(() {
+      _fabFuture = _api.getFabList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -361,6 +367,7 @@ class _LibraryTabState extends State<LibraryTab> {
                         spacing: spacing,
                         onLoadMore: _requestMoreFabItems,
                         onProjectsChanged: _refreshProjects,
+                        onFabListChanged: _refreshFabList,
                       );
                     },
                   );
@@ -381,7 +388,8 @@ class _FabAssetsGrid extends StatefulWidget {
   final int crossAxisCount;
   final double spacing;
   final VoidCallback? onProjectsChanged;
-  const _FabAssetsGrid({Key? key, required this.assets, required this.crossAxisCount, required this.spacing, this.onLoadMore, this.onProjectsChanged}) : super(key: key);
+  final VoidCallback? onFabListChanged;
+  const _FabAssetsGrid({Key? key, required this.assets, required this.crossAxisCount, required this.spacing, this.onLoadMore, this.onProjectsChanged, this.onFabListChanged}) : super(key: key);
 
   @override
   State<_FabAssetsGrid> createState() => _FabAssetsGridState();
@@ -660,6 +668,7 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
           title: a.title.isNotEmpty ? a.title : a.assetId,
           sizeLabel: a.shortEngineLabel.isNotEmpty ? a.shortEngineLabel : '${a.assetNamespace}/${a.assetId}',
           isCompleteProject: a.isCompleteProject,
+          downloaded: a.anyDownloaded,
           isBusy: _busy.contains(globalIndex),
           onPrimaryPressed: () async {
             if (a.isCompleteProject) {
@@ -685,6 +694,8 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                 if (ok && !params.dryRun) {
                   // Notify parent to refresh projects list
                   widget.onProjectsChanged?.call();
+                  // Also refresh Fab list to update downloaded indicators
+                  widget.onFabListChanged?.call();
                 }
               } catch (e) {
                 if (!mounted) return;
@@ -712,6 +723,10 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(msg)),
               );
+              if (result.success) {
+                // Refresh Fab list so the downloaded indicator updates
+                widget.onFabListChanged?.call();
+              }
             } catch (e) {
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
