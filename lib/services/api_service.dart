@@ -105,6 +105,39 @@ class ApiService {
     final data = jsonDecode(body) as Map<String, dynamic>;
     return OpenProjectResult.fromJson(data);
   }
+
+  Future<ImportAssetResult> importAsset({required String assetName, required String project, String? targetSubdir, bool overwrite = false}) async {
+    final uri = _uri('/import-asset');
+    final payload = <String, dynamic>{
+      'asset_name': assetName,
+      'project': project,
+      if (targetSubdir != null && targetSubdir.isNotEmpty) 'target_subdir': targetSubdir,
+      if (overwrite) 'overwrite': true,
+    };
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = res.body;
+    if (res.statusCode != 200) {
+      // Try to parse error message from JSON; otherwise surface plain text
+      try {
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final msg = data['message']?.toString() ?? body;
+        throw Exception('Import failed: ${res.statusCode} $msg');
+      } catch (_) {
+        throw Exception('Import failed: ${res.statusCode} $body');
+      }
+    }
+    // Try parse JSON; otherwise treat as success with message
+    try {
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return ImportAssetResult.fromJson(data);
+    } catch (_) {
+      return ImportAssetResult(success: true, message: body.isNotEmpty ? body : 'Import started');
+    }
+  }
 }
 
 class OpenProjectResult {
@@ -147,5 +180,87 @@ class OpenEngineResult {
       launched: json['launched'] as bool? ?? false,
       message: json['message'] as String? ?? '',
     );
+  }
+}
+
+class ImportAssetResult {
+  final bool success;
+  final String message;
+  final String? project;
+  final String? assetName;
+
+  ImportAssetResult({required this.success, required this.message, this.project, this.assetName});
+
+  factory ImportAssetResult.fromJson(Map<String, dynamic> json) {
+    // Backend may return keys like { success, message, project, asset_name }
+    return ImportAssetResult(
+      success: json['success'] as bool? ?? true,
+      message: json['message'] as String? ?? '',
+      project: json['project'] as String?,
+      assetName: (json['asset_name'] ?? json['assetName']) as String?,
+    );
+  }
+}
+
+class CreateProjectResult {
+  final bool ok;
+  final String message;
+  final String? command;
+  final String? projectPath;
+
+  CreateProjectResult({required this.ok, required this.message, this.command, this.projectPath});
+
+  factory CreateProjectResult.fromJson(Map<String, dynamic> json) {
+    return CreateProjectResult(
+      ok: json['ok'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      command: json['command'] as String?,
+      projectPath: (json['project_path'] ?? json['projectPath']) as String?,
+    );
+  }
+}
+
+extension CreateUnrealProjectApi on ApiService {
+  Future<CreateProjectResult> createUnrealProject({
+    String? enginePath,
+    String? templateProject,
+    String? assetName,
+    required String outputDir,
+    required String projectName,
+    String projectType = 'bp',
+    bool dryRun = false,
+  }) async {
+    final uri = _uri('/create-unreal-project');
+    final payload = <String, dynamic>{
+      'engine_path': enginePath,
+      'template_project': templateProject,
+      'asset_name': assetName,
+      'output_dir': outputDir,
+      'project_name': projectName,
+      'project_type': projectType,
+      'dry_run': dryRun,
+    }..removeWhere((key, value) => value == null);
+
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = res.body;
+    if (res.statusCode != 200) {
+      try {
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final msg = data['message']?.toString() ?? body;
+        throw Exception('Create project failed: ${res.statusCode} $msg');
+      } catch (_) {
+        throw Exception('Create project failed: ${res.statusCode} $body');
+      }
+    }
+    try {
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return CreateProjectResult.fromJson(data);
+    } catch (_) {
+      return CreateProjectResult(ok: true, message: body.isNotEmpty ? body : 'OK', command: null, projectPath: null);
+    }
   }
 }

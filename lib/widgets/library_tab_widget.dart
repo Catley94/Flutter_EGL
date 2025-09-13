@@ -379,6 +379,32 @@ class _FabAssetsGrid extends StatefulWidget {
   State<_FabAssetsGrid> createState() => _FabAssetsGridState();
 }
 
+class _ImportParams {
+  final String project;
+  final String targetSubdir;
+  final bool overwrite;
+  const _ImportParams({required this.project, required this.targetSubdir, required this.overwrite});
+}
+
+class _CreateParams {
+  final String? enginePath;
+  final String? templateProject;
+  final String? assetName;
+  final String outputDir;
+  final String projectName;
+  final String projectType; // 'bp' or 'cpp'
+  final bool dryRun;
+  const _CreateParams({
+    required this.enginePath,
+    required this.templateProject,
+    required this.assetName,
+    required this.outputDir,
+    required this.projectName,
+    required this.projectType,
+    required this.dryRun,
+  });
+}
+
 class _FabAssetsGridState extends State<_FabAssetsGrid> {
   // Kept for compatibility; no-op in pagination mode
   void increaseVisible(int by, int total) {
@@ -387,6 +413,206 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
 
   static const int _pageSize = 40; // max assets per page
   int _page = 0;
+
+  final ApiService _api = ApiService();
+  final Set<int> _busy = <int>{};
+
+  Future<_ImportParams?> _promptImport(BuildContext context, FabAsset asset) async {
+    final projectCtrl = TextEditingController(text: 'MyGame');
+    final subdirCtrl = TextEditingController(text: '');
+    bool overwrite = false;
+
+    final result = await showDialog<_ImportParams>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Import Asset'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: projectCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Project (name or .uproject path)',
+                  hintText: 'e.g., MyGame or /path/to/MyGame.uproject',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: subdirCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Target subfolder (optional)',
+                  hintText: 'e.g., Imported/Industry',
+                ),
+              ),
+              const SizedBox(height: 8),
+              StatefulBuilder(
+                builder: (context, setState) {
+                  return CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Overwrite existing files'),
+                    value: overwrite,
+                    onChanged: (v) => setState(() => overwrite = v ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final project = projectCtrl.text.trim();
+                final subdir = subdirCtrl.text.trim();
+                if (project.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Please enter a project name or .uproject path')),
+                  );
+                  return;
+                }
+                Navigator.of(ctx).pop(_ImportParams(project: project, targetSubdir: subdir, overwrite: overwrite));
+              },
+              child: const Text('Import'),
+            ),
+          ],
+        );
+      },
+    );
+    return result;
+  }
+
+  Future<_CreateParams?> _promptCreateProject(BuildContext context, FabAsset asset) async {
+    final enginePathCtrl = TextEditingController(text: '');
+    final templateCtrl = TextEditingController(text: '');
+    final outputDirCtrl = TextEditingController(text: '\$HOME/Documents/Unreal Projects');
+    final projectNameCtrl = TextEditingController(text: 'MyNewGame');
+    String projectType = 'bp';
+    bool dryRun = true;
+    final assetNameCtrl = TextEditingController(text: asset.title.isNotEmpty ? asset.title : asset.assetId);
+
+    final result = await showDialog<_CreateParams>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Create Unreal Project'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: projectNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Project name',
+                    hintText: 'e.g., MyNewGame',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: outputDirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Output folder',
+                    hintText: "e.g., \$HOME/Documents/Unreal Projects",
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: assetNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Asset name (optional if template path used)',
+                    hintText: 'e.g., Stack O Bot',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: templateCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Template .uproject path (optional)',
+                    hintText: '/path/to/Sample/Sample.uproject',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: enginePathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Engine path (optional)',
+                    hintText: '/path/to/Unreal/UE_5.xx',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Project type:'),
+                    const SizedBox(width: 12),
+                    DropdownButton<String>(
+                      value: projectType,
+                      items: const [
+                        DropdownMenuItem(value: 'bp', child: Text('Blueprint (bp)')),
+                        DropdownMenuItem(value: 'cpp', child: Text('C++ (cpp)')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          projectType = v;
+                          // refresh local state inside dialog
+                          (ctx as Element).markNeedsBuild();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                StatefulBuilder(
+                  builder: (context, setState) {
+                    return CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Dry run (do not actually create)'),
+                      value: dryRun,
+                      onChanged: (v) => setState(() => dryRun = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final projectName = projectNameCtrl.text.trim();
+                final outputDir = outputDirCtrl.text.trim();
+                final assetName = assetNameCtrl.text.trim();
+                final template = templateCtrl.text.trim();
+                final enginePath = enginePathCtrl.text.trim();
+                if (projectName.isEmpty || outputDir.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Please enter project name and output folder')),
+                  );
+                  return;
+                }
+                Navigator.of(ctx).pop(_CreateParams(
+                  enginePath: enginePath.isEmpty ? null : enginePath,
+                  templateProject: template.isEmpty ? null : template,
+                  assetName: assetName.isEmpty ? null : assetName,
+                  outputDir: outputDir,
+                  projectName: projectName,
+                  projectType: projectType,
+                  dryRun: dryRun,
+                ));
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+    return result;
+  }
 
   @override
   void didUpdateWidget(covariant _FabAssetsGrid oldWidget) {
@@ -420,11 +646,69 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
       ),
       itemCount: count,
       itemBuilder: (context, index) {
-        final a = widget.assets[start + index];
+        final globalIndex = start + index;
+        final a = widget.assets[globalIndex];
         return FabLibraryItem(
           title: a.title.isNotEmpty ? a.title : a.assetId,
           sizeLabel: a.shortEngineLabel.isNotEmpty ? a.shortEngineLabel : '${a.assetNamespace}/${a.assetId}',
           isCompleteProject: a.isCompleteProject,
+          isBusy: _busy.contains(globalIndex),
+          onPrimaryPressed: () async {
+            if (a.isCompleteProject) {
+              final params = await _promptCreateProject(context, a);
+              if (params == null) return;
+              setState(() => _busy.add(globalIndex));
+              try {
+                final res = await _api.createUnrealProject(
+                  enginePath: params.enginePath,
+                  templateProject: params.templateProject,
+                  assetName: params.assetName,
+                  outputDir: params.outputDir,
+                  projectName: params.projectName,
+                  projectType: params.projectType,
+                  dryRun: params.dryRun,
+                );
+                if (!mounted) return;
+                final ok = res.ok;
+                final msg = res.message.isNotEmpty ? res.message : (ok ? 'OK' : 'Failed');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(msg)),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to create project: $e')),
+                );
+              } finally {
+                if (mounted) setState(() => _busy.remove(globalIndex));
+              }
+              return;
+            }
+            final params = await _promptImport(context, a);
+            if (params == null) return;
+            setState(() => _busy.add(globalIndex));
+            try {
+              final name = a.title.isNotEmpty ? a.title : a.assetId;
+              final result = await _api.importAsset(
+                assetName: name,
+                project: params.project,
+                targetSubdir: params.targetSubdir.isEmpty ? null : params.targetSubdir,
+                overwrite: params.overwrite,
+              );
+              if (!mounted) return;
+              final msg = result.message.isNotEmpty ? result.message : (result.success ? 'Import started' : 'Import failed');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(msg)),
+              );
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to import: $e')),
+              );
+            } finally {
+              if (mounted) setState(() => _busy.remove(globalIndex));
+            }
+          },
         );
       },
     );

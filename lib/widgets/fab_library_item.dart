@@ -4,11 +4,15 @@ class FabLibraryItem extends StatelessWidget {
   final String title;
   final String sizeLabel;
   final bool isCompleteProject;
+  final VoidCallback? onPrimaryPressed;
+  final bool isBusy;
 
   const FabLibraryItem({
     required this.title,
     required this.sizeLabel,
     required this.isCompleteProject,
+    this.onPrimaryPressed,
+    this.isBusy = false,
   });
 
   @override
@@ -55,14 +59,23 @@ class FabLibraryItem extends StatelessWidget {
                 SizedBox(
                   height: 36,
                   child: FilledButton.icon(
-                    onPressed: () {
-                      if (isCompleteProject) {
-                        print("Create Project clicked");
-                      } else {
-                        print("Import Asset clicked");
-                      }
-                    },
-                    icon: Icon(isCompleteProject ? Icons.add : Icons.download, size: 18),
+                    onPressed: isBusy
+                        ? null
+                        : (onPrimaryPressed ?? () {
+                            if (isCompleteProject) {
+                              // No-op default
+                              debugPrint("Create Project clicked (no handler)");
+                            } else {
+                              debugPrint("Import Asset clicked (no handler)");
+                            }
+                          }),
+                    icon: isBusy
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: const CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(isCompleteProject ? Icons.add : Icons.download, size: 18),
                     label: Text(isCompleteProject ? 'Create Project' : 'Import Asset'),
                   ),
                 ),
