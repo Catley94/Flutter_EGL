@@ -1,6 +1,6 @@
 // dart
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:window_size/window_size.dart' as window_size;
 import 'package:window_manager/window_manager.dart';
@@ -44,6 +44,26 @@ class NavigationRailExampleApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return Stack(
+          children: [
+            child,
+            if (kDebugMode)
+              Positioned(
+                left: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Banner(
+                    message: 'DEBUG',
+                    location: BannerLocation.bottomStart,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
