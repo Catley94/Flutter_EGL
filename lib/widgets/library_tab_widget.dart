@@ -1,5 +1,7 @@
 // lib/widgets/library_tab.dart (new file)
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:math';
 import 'fab_library_item.dart';
 import '../services/api_service.dart';
 import '../models/unreal.dart';
@@ -503,6 +505,73 @@ class _CreateParams {
 }
 
 class _FabAssetsGridState extends State<_FabAssetsGrid> {
+  String _makeJobId() {
+    final r = Random();
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final rand = r.nextInt(0x7FFFFFFF);
+    return 'job_${ts.toRadixString(16)}_${rand.toRadixString(16)}';
+  }
+
+  // Progress dialog for long-running jobs via WebSocket events
+  Future<void> _showJobProgressDialog({required String jobId, required String title}) async {
+    double? percent;
+    String message = 'Starting...';
+    StreamSubscription? sub;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setStateSB) {
+              sub ??= _api.progressEvents(jobId).listen((ev) {
+                // Debug: log event as interpreted by UI
+                final ptxt = ev.progress == null ? 'null' : ev.progress!.toStringAsFixed(1);
+                // ignore: avoid_print
+                print('[UI][progress] job=$jobId phase=${ev.phase} message="${ev.message}" progress=$ptxt');
+                setStateSB(() {
+                  percent = ev.progress;
+                  message = ev.message.isNotEmpty ? ev.message : ev.phase;
+                });
+                // Auto-close when we clearly reach 100% or receive a done phase
+                if ((ev.progress != null && ev.progress! >= 100.0) || ev.phase.toLowerCase() == 'done' || ev.phase.toLowerCase() == 'completed') {
+                  if (Navigator.of(ctx).canPop()) {
+                    Navigator.of(ctx).pop();
+                  }
+                }
+              }, onError: (_) {
+                // Ignore errors; dialog can be closed manually or by caller
+              });
+              final p = (percent ?? 0).clamp(0, 100);
+              return AlertDialog(
+                title: Text(title),
+                content: SizedBox(
+                  width: 420,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      LinearProgressIndicator(value: percent != null ? (p / 100.0) : null),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: Text(message, overflow: TextOverflow.ellipsis)),
+                          if (percent != null) Text('${p.toStringAsFixed(0)}%'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+    finally {
+      await sub?.cancel();
+    }
+  }
   // Kept for compatibility; no-op in pagination mode
   void increaseVisible(int by, int total) {
     // no-op
@@ -938,7 +1007,10 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
               if (params == null) return;
               setState(() => _busy.add(globalIndex));
               try {
-                final res = await _api.createUnrealProject(
+                final jobId = _makeJobId();
+                                // Start listening to progress in a dialog
+                                final dlg = _showJobProgressDialog(jobId: jobId, title: 'Creating project...');
+                                final res = await _api.createUnrealProject(
                   enginePath: params.enginePath,
                   templateProject: params.templateProject,
                   assetName: params.assetName,
@@ -946,7 +1018,17 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                   projectName: params.projectName,
                   projectType: params.projectType,
                   dryRun: params.dryRun,
+                  jobId: jobId,
                 );
+                // Close progress dialog if still open (in case no events)
+                if (mounted) {
+                  final nav = Navigator.of(context, rootNavigator: true);
+                  if (nav.canPop()) {
+                    nav.pop();
+                  }
+                }
+                // Ensure dialog future completes
+                await dlg.catchError((_){});
                 if (!mounted) return;
                 final ok = res.ok;
                 final msg = res.message.isNotEmpty ? res.message : (ok ? 'OK' : 'Failed');
@@ -974,12 +1056,21 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
             setState(() => _busy.add(globalIndex));
             try {
               final name = a.title.isNotEmpty ? a.title : a.assetId;
+              final jobId = _makeJobId();
+              final dlg = _showJobProgressDialog(jobId: jobId, title: 'Importing asset...');
               final result = await _api.importAsset(
                 assetName: name,
                 project: params.project,
                 targetSubdir: params.targetSubdir.isEmpty ? null : params.targetSubdir,
                 overwrite: params.overwrite,
+                jobId: jobId,
               );
+              // Close progress dialog if still open
+              if (mounted) {
+                final nav = Navigator.of(context, rootNavigator: true);
+                if (nav.canPop()) nav.pop();
+              }
+              await dlg.catchError((_){});
               if (!mounted) return;
               final msg = result.message.isNotEmpty ? result.message : (result.success ? 'Import started' : 'Import failed');
               ScaffoldMessenger.of(context).showSnackBar(

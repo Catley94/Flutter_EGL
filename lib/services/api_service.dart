@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/unreal.dart';
 import '../models/fab.dart';
@@ -13,6 +15,12 @@ class ApiService {
 
   Uri _uri(String path, [Map<String, String>? query]) {
     return Uri.parse(baseUrl).replace(path: path, queryParameters: query);
+  }
+
+  Uri _wsUri(String path, [Map<String, String>? query]) {
+    final httpUri = _uri(path, query);
+    final scheme = httpUri.scheme == 'https' ? 'wss' : 'ws';
+    return httpUri.replace(scheme: scheme);
   }
 
   Future<List<UnrealEngineInfo>> listUnrealEngines({String? baseDir}) async {
@@ -106,13 +114,14 @@ class ApiService {
     return OpenProjectResult.fromJson(data);
   }
 
-  Future<ImportAssetResult> importAsset({required String assetName, required String project, String? targetSubdir, bool overwrite = false}) async {
+  Future<ImportAssetResult> importAsset({required String assetName, required String project, String? targetSubdir, bool overwrite = false, String? jobId}) async {
     final uri = _uri('/import-asset');
     final payload = <String, dynamic>{
       'asset_name': assetName,
       'project': project,
       if (targetSubdir != null && targetSubdir.isNotEmpty) 'target_subdir': targetSubdir,
       if (overwrite) 'overwrite': true,
+      if (jobId != null && jobId.isNotEmpty) 'job_id': jobId,
     };
     final res = await http.post(
       uri,
@@ -137,6 +146,96 @@ class ApiService {
     } catch (_) {
       return ImportAssetResult(success: true, message: body.isNotEmpty ? body : 'Import started');
     }
+  }
+
+  // Open a WebSocket channel for a given job to receive progress events
+  WebSocketChannel openProgressChannel(String jobId) {
+    final uri = _wsUri('/ws', {'jobId': jobId});
+    // Debug: log WS connection attempts
+    // ignore: avoid_print
+    print('[WS] Connecting to $uri for job $jobId');
+    return WebSocketChannel.connect(uri);
+  }
+
+  // Convenience: map events to strongly-typed ProgressEvent with debug info
+  Stream<ProgressEvent> progressEvents(String jobId) {
+    final channel = openProgressChannel(jobId);
+
+    // Use a controller to expose connection lifecycle and errors to listeners
+    final controller = StreamController<ProgressEvent>();
+
+    // Immediately emit a connecting status to update UI and logs
+    controller.add(
+      ProgressEvent(
+        jobId: jobId,
+        phase: 'ws:connecting',
+        message: 'Connecting to progress channel...',
+        progress: null,
+        details: null,
+      ),
+    );
+
+    late final StreamSubscription sub;
+    sub = channel.stream.listen(
+      (dynamic data) {
+        try {
+          // ignore: avoid_print
+          print('[WS] message (job=$jobId): $data');
+          final map = jsonDecode(data as String) as Map<String, dynamic>;
+          controller.add(ProgressEvent.fromJson(map));
+        } catch (e) {
+          // Fallback: wrap plain text as message
+          controller.add(ProgressEvent(jobId: jobId, phase: 'message', message: data?.toString() ?? '', progress: null, details: null));
+        }
+      },
+      onError: (Object err, [StackTrace? st]) {
+        // ignore: avoid_print
+        print('[WS] error (job=$jobId): $err');
+        controller.add(ProgressEvent(jobId: jobId, phase: 'ws:error', message: err.toString(), progress: null, details: null));
+        controller.close();
+      },
+      onDone: () {
+        // ignore: avoid_print
+        print('[WS] closed (job=$jobId)');
+        controller.add(ProgressEvent(jobId: jobId, phase: 'ws:closed', message: 'WebSocket closed', progress: null, details: null));
+        controller.close();
+      },
+      cancelOnError: true,
+    );
+
+    // Ensure we clean up when the consumer cancels
+    controller.onCancel = () async {
+      await sub.cancel();
+      await channel.sink.close();
+    };
+
+    return controller.stream;
+  }
+}
+
+class ProgressEvent {
+  final String jobId;
+  final String phase;
+  final String message;
+  final double? progress;
+  final Map<String, dynamic>? details;
+
+  ProgressEvent({
+    required this.jobId,
+    required this.phase,
+    required this.message,
+    this.progress,
+    this.details,
+  });
+
+  factory ProgressEvent.fromJson(Map<String, dynamic> json) {
+    return ProgressEvent(
+      jobId: json['job_id']?.toString() ?? '',
+      phase: json['phase']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      progress: (json['progress'] is num) ? (json['progress'] as num).toDouble() : null,
+      details: (json['details'] is Map<String, dynamic>) ? json['details'] as Map<String, dynamic> : null,
+    );
   }
 }
 
@@ -229,6 +328,7 @@ extension CreateUnrealProjectApi on ApiService {
     required String projectName,
     String projectType = 'bp',
     bool dryRun = false,
+    String? jobId,
   }) async {
     final uri = _uri('/create-unreal-project');
     final payload = <String, dynamic>{
@@ -239,6 +339,7 @@ extension CreateUnrealProjectApi on ApiService {
       'project_name': projectName,
       'project_type': projectType,
       'dry_run': dryRun,
+      if (jobId != null && jobId.isNotEmpty) 'job_id': jobId,
     }..removeWhere((key, value) => value == null);
 
     final res = await http.post(

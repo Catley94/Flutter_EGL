@@ -38,6 +38,7 @@ dependencies:
   http: ^1.2.2
   url_launcher: ^6.3.0
   window_manager: ^0.5.1
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:
