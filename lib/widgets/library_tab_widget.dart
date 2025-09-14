@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../models/unreal.dart';
 import '../models/fab.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:window_manager/window_manager.dart';
 
 class LibraryTab extends StatefulWidget {
   const LibraryTab({super.key});
@@ -524,17 +525,53 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
         builder: (ctx) {
           return StatefulBuilder(
             builder: (ctx, setStateSB) {
-              sub ??= _api.progressEvents(jobId).listen((ev) {
+              sub ??= _api.progressEvents(jobId).listen((ev) async { 
                 // Debug: log event as interpreted by UI
-                final ptxt = ev.progress == null ? 'null' : ev.progress!.toStringAsFixed(1);
+                final ptxtRaw = ev.progress == null ? 'null' : ev.progress!.toStringAsFixed(3);
                 // ignore: avoid_print
-                print('[UI][progress] job=$jobId phase=${ev.phase} message="${ev.message}" progress=$ptxt');
+                print('[UI][progress] job=$jobId phase=${ev.phase} message="${ev.message}" progress(raw)=$ptxtRaw');
+
+                // Normalize progress to 0..100 regardless of backend scale (0..1 or 0..100)
+                double? normalized;
+                final raw = ev.progress;
+                if (raw != null) {
+                  if (raw.isNaN) {
+                    normalized = null; // treat as unknown
+                  } else if (raw <= 1.01) {
+                    normalized = (raw * 100).clamp(0, 100);
+                  } else {
+                    normalized = raw.clamp(0, 100);
+                  }
+                }
+
+                // Fallback/override: derive progress from messages like "123 / 5851"
+                double? fromCounts;
+                try {
+                  final m = RegExp(r'\b(\d+)\s*/\s*(\d+)\b').firstMatch(ev.message);
+                  if (m != null) {
+                    final cur = double.tryParse(m.group(1) ?? '');
+                    final tot = double.tryParse(m.group(2) ?? '');
+                    if (cur != null && tot != null && tot > 0 && cur >= 0 && cur <= tot) {
+                      fromCounts = ((cur / tot) * 100).clamp(0, 100);
+                    }
+                  }
+                } catch (_) {}
+                // Prefer count-derived progress when available (more reliable for downloading phases)
+                final effective = fromCounts ?? normalized;
+
                 setStateSB(() {
-                  percent = ev.progress;
+                  // Update in-dialog progress state
+                  percent = effective; // percent represents 0..100 scale now
                   message = ev.message.isNotEmpty ? ev.message : ev.phase;
                 });
+                // Update OS-level window/taskbar progress if available
+                if (effective != null) {
+                  final norm01 = (effective / 100.0);
+                  try { await windowManager.setProgressBar(norm01); } catch (_) {}
+                }
                 // Auto-close when we clearly reach 100% or receive a done phase
-                if ((ev.progress != null && ev.progress! >= 100.0) || ev.phase.toLowerCase() == 'done' || ev.phase.toLowerCase() == 'completed') {
+                if ((effective != null && effective >= 100.0) || ev.phase.toLowerCase() == 'done' || ev.phase.toLowerCase() == 'completed') {
+                  try { await windowManager.setProgressBar(-1); } catch (_) {}
                   if (Navigator.of(ctx).canPop()) {
                     Navigator.of(ctx).pop();
                   }
@@ -570,6 +607,7 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
     }
     finally {
       await sub?.cancel();
+      try { await windowManager.setProgressBar(-1); } catch (_) {}
     }
   }
   // Kept for compatibility; no-op in pagination mode

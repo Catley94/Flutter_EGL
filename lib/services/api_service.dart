@@ -229,12 +229,35 @@ class ProgressEvent {
   });
 
   factory ProgressEvent.fromJson(Map<String, dynamic> json) {
+    double? _parseProgress(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      if (v is String) {
+        final s = v.trim();
+        // Accept values like "0.56", "56", or "56%"
+        final stripped = s.endsWith('%') ? s.substring(0, s.length - 1) : s;
+        final d = double.tryParse(stripped);
+        return d;
+      }
+      return null;
+    }
+
+    double? progress = _parseProgress(json['progress'])
+        ?? _parseProgress(json['percentage'])
+        ?? _parseProgress(json['percent']);
+
+    Map<String, dynamic>? details;
+    if (json['details'] is Map<String, dynamic>) {
+      details = json['details'] as Map<String, dynamic>;
+      progress = progress ?? _parseProgress(details['progress']) ?? _parseProgress(details['percentage']) ?? _parseProgress(details['percent']);
+    }
+
     return ProgressEvent(
       jobId: json['job_id']?.toString() ?? '',
       phase: json['phase']?.toString() ?? '',
       message: json['message']?.toString() ?? '',
-      progress: (json['progress'] is num) ? (json['progress'] as num).toDouble() : null,
-      details: (json['details'] is Map<String, dynamic>) ? json['details'] as Map<String, dynamic> : null,
+      progress: progress,
+      details: details,
     );
   }
 }
