@@ -1,6 +1,11 @@
-# test_app_ui
+# egs_client Flutter UI
 
-A new Flutter project.
+This is the Flutter UI for the egs_client demo. It can list Unreal projects and engines discovered on your machine and interact with the local Rust HTTP service.
+
+## Unreal Engine on Linux — where to download?
+
+Epic does not publish prebuilt Linux editor binaries via the Launcher. The supported way is to link your Epic and GitHub accounts and build from source. See:
+- ../docs/UNREAL_LINUX_DOWNLOADS.md
 
 ## Getting Started
 
