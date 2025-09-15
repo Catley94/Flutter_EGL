@@ -72,6 +72,30 @@ class ApiService {
     return projects;
   }
 
+  Future<Map<String, dynamic>> getPathsConfig() async {
+    final uri = _uri('/config/paths');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Failed to fetch paths config: ${res.statusCode} ${res.body}');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> setPathsConfig({String? projectsDir, String? enginesDir, String? cacheDir, String? downloadsDir}) async {
+    final uri = _uri('/config/paths');
+    final payload = <String, dynamic>{
+      if (projectsDir != null) 'projects_dir': projectsDir,
+      if (enginesDir != null) 'engines_dir': enginesDir,
+      if (cacheDir != null) 'cache_dir': cacheDir,
+      if (downloadsDir != null) 'downloads_dir': downloadsDir,
+    };
+    final res = await http.post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload));
+    if (res.statusCode != 200) {
+      throw Exception('Failed to update paths config: ${res.statusCode} ${res.body}');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<List<FabAsset>> getFabList() async {
     final uri = _uri('/get-fab-list');
     final res = await http.get(uri);

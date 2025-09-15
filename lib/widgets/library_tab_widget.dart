@@ -32,6 +32,12 @@ class _LibraryTabState extends State<LibraryTab> {
   List<UnrealEngineInfo> _engines = const [];
   bool _opening = false;
 
+  // Settings: user-configurable paths
+  final TextEditingController _projectsDirCtrl = TextEditingController();
+  final TextEditingController _enginesDirCtrl = TextEditingController();
+  final TextEditingController _cacheDirCtrl = TextEditingController();
+  final TextEditingController _downloadsDirCtrl = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -57,7 +63,116 @@ class _LibraryTabState extends State<LibraryTab> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
+    _projectsDirCtrl.dispose();
+    _enginesDirCtrl.dispose();
+    _cacheDirCtrl.dispose();
+    _downloadsDirCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _applyPaths() async {
+    final projectsDir = _projectsDirCtrl.text.trim();
+    final enginesDir = _enginesDirCtrl.text.trim();
+    final cacheDir = _cacheDirCtrl.text.trim();
+    final downloadsDir = _downloadsDirCtrl.text.trim();
+    try {
+      await _api.setPathsConfig(
+        projectsDir: projectsDir.isNotEmpty ? projectsDir : null,
+        enginesDir: enginesDir.isNotEmpty ? enginesDir : null,
+        cacheDir: cacheDir.isNotEmpty ? cacheDir : null,
+        downloadsDir: downloadsDir.isNotEmpty ? downloadsDir : null,
+      );
+      // Refresh lists using new effective bases
+      setState(() {
+        _enginesFuture = _api.listUnrealEngines().then((v) => _engines = v).then((_) => _engines).catchError((_) => _engines);
+        _projectsFuture = _api.listUnrealProjects();
+        _fabFuture = _api.getFabList();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to apply paths: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openSettingsDialog() async {
+    // Ensure latest values
+    try {
+      final cfg = await _api.getPathsConfig();
+      final configured = cfg['configured'] as Map<String, dynamic>?;
+      final effectiveProjects = cfg['effective_projects_dir']?.toString() ?? '';
+      final effectiveEngines = cfg['effective_engines_dir']?.toString() ?? '';
+      final effectiveCache = cfg['effective_cache_dir']?.toString() ?? '';
+      final effectiveDownloads = cfg['effective_downloads_dir']?.toString() ?? '';
+      setState(() {
+        _projectsDirCtrl.text = (configured?['projects_dir']?.toString() ?? effectiveProjects);
+        _enginesDirCtrl.text = (configured?['engines_dir']?.toString() ?? effectiveEngines);
+        _cacheDirCtrl.text = (configured?['cache_dir']?.toString() ?? effectiveCache);
+        _downloadsDirCtrl.text = (configured?['downloads_dir']?.toString() ?? effectiveDownloads);
+      });
+    } catch (_) {}
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _projectsDirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Projects directory',
+                    hintText: '/path/to/Unreal Projects',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _enginesDirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Engines directory',
+                    hintText: '/path/to/UnrealEngines',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _cacheDirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Cache directory',
+                    hintText: './cache',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _downloadsDirCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Downloads directory',
+                    hintText: './downloads',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await _applyPaths();
+                if (context.mounted) Navigator.of(ctx).pop();
+              },
+              child: const Text('Apply'),
+            )
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -67,6 +182,20 @@ class _LibraryTabState extends State<LibraryTab> {
     _enginesFuture = _api.listUnrealEngines().then((v) => _engines = v).then((_) => _engines).catchError((_) => _engines);
     _projectsFuture = _api.listUnrealProjects();
     _fabFuture = _api.getFabList();
+    // load configured paths
+    _api.getPathsConfig().then((cfg) {
+      final configured = cfg['configured'] as Map<String, dynamic>?;
+      final effectiveProjects = cfg['effective_projects_dir']?.toString() ?? '';
+      final effectiveEngines = cfg['effective_engines_dir']?.toString() ?? '';
+      final effectiveCache = cfg['effective_cache_dir']?.toString() ?? '';
+      final effectiveDownloads = cfg['effective_downloads_dir']?.toString() ?? '';
+      setState(() {
+        _projectsDirCtrl.text = (configured?['projects_dir']?.toString() ?? effectiveProjects);
+        _enginesDirCtrl.text = (configured?['engines_dir']?.toString() ?? effectiveEngines);
+        _cacheDirCtrl.text = (configured?['cache_dir']?.toString() ?? effectiveCache);
+        _downloadsDirCtrl.text = (configured?['downloads_dir']?.toString() ?? effectiveDownloads);
+      });
+    }).catchError((_) {});
   }
 
   void _refreshProjects() {
@@ -93,6 +222,18 @@ class _LibraryTabState extends State<LibraryTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Settings icon to open overlay
+            Row(
+              children: [
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Settings',
+                  icon: const Icon(Icons.settings),
+                  onPressed: _openSettingsDialog,
+                ),
+              ],
+            ),
+
             // Engine Versions grid (new)
             Text(
               'Engine Versions',
