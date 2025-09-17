@@ -647,6 +647,76 @@ class _CreateParams {
 }
 
 class _FabAssetsGridState extends State<_FabAssetsGrid> {
+  // Cached highest installed UE version string like '5.6' or '4.27'
+  String? _maxInstalledUe;
+
+  // Parse UE version tokens from strings like 'UE_5.6', '5.6', '5.6.1'. Returns [major, minor, patch].
+  List<int>? _parseUeVersion(String v) {
+    if (v.isEmpty) return null;
+    var s = v.trim();
+    if (s.startsWith('UE_')) s = s.substring(3);
+    // Keep only digits and dots
+    final m = RegExp(r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?$').firstMatch(s);
+    if (m == null) return null;
+    int p(String? x) => int.tryParse(x ?? '') ?? 0;
+    return [p(m.group(1)), p(m.group(2)), p(m.group(3))];
+  }
+
+  int _cmpUeVersions(String a, String b) {
+    final pa = _parseUeVersion(a) ?? [0, 0, 0];
+    final pb = _parseUeVersion(b) ?? [0, 0, 0];
+    for (var i = 0; i < 3; i++) {
+      if (pa[i] != pb[i]) return pa[i].compareTo(pb[i]);
+    }
+    return 0;
+  }
+
+  // Returns highest supported engine version for the given asset (e.g., '5.6').
+  String? _maxSupportedForAsset(FabAsset a) {
+    String? best;
+    for (final pv in a.projectVersions) {
+      for (final ev in pv.engineVersions) {
+        final token = ev.trim();
+        if (token.isEmpty) continue;
+        final normalized = token.startsWith('UE_') ? token.substring(3) : token;
+        if (best == null || _cmpUeVersions(normalized, best!) > 0) {
+          best = normalized;
+        }
+      }
+    }
+    return best;
+  }
+
+  // Returns set of supported major.minor strings, e.g., {'5.6','5.5','4.27'}
+  Set<String> _supportedMajorMinorSet(FabAsset a) {
+    final out = <String>{};
+    String mm(List<int> p) => p.length >= 2 ? '${p[0]}.${p[1]}' : '${p[0]}.0';
+    for (final pv in a.projectVersions) {
+      for (final ev in pv.engineVersions) {
+        final norm = ev.startsWith('UE_') ? ev.substring(3) : ev;
+        final pr = _parseUeVersion(norm);
+        if (pr != null) out.add(mm(pr));
+      }
+    }
+    return out;
+  }
+
+  Future<String?> _getHighestInstalledEngineVersion() async {
+    if (_maxInstalledUe != null) return _maxInstalledUe;
+    try {
+      final engines = await _api.listUnrealEngines();
+      String? best;
+      for (final e in engines) {
+        final v = e.version.trim();
+        if (v.isEmpty) continue;
+        if (best == null || _cmpUeVersions(v, best) > 0) best = v;
+      }
+      _maxInstalledUe = best;
+      return best;
+    } catch (_) {
+      return null;
+    }
+  }
   String _makeJobId() {
     final r = Random();
     final ts = DateTime.now().millisecondsSinceEpoch;
@@ -1232,6 +1302,37 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
             }
             final params = await _promptImport(context, a);
             if (params == null) return;
+            // Check for Unreal Engine version mismatch before proceeding
+            try {
+              final targetVersion = await _getHighestInstalledEngineVersion();
+              final supported = _supportedMajorMinorSet(a);
+              String? targetMM;
+              if (targetVersion != null && targetVersion.trim().isNotEmpty) {
+                final pv = _parseUeVersion(targetVersion.trim());
+                if (pv != null) {
+                  targetMM = '${pv[0]}.${pv[1]}';
+                }
+              }
+              final mismatch = targetMM != null && !supported.contains(targetMM);
+              if (mismatch && mounted) {
+                final proceed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Unsupported Unreal Engine version'),
+                    content: const Text('Warning, you are about to import an asset into an unsupported version of Unreal Engine, this may cause issues, are you sure you want to go ahead?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Proceed')),
+                    ],
+                  ),
+                );
+                if (proceed != true) {
+                  return; // user cancelled
+                }
+              }
+            } catch (_) {
+              // If any error occurs during version check, ignore and proceed
+            }
             setState(() => _busy.add(globalIndex));
             try {
               final name = a.title.isNotEmpty ? a.title : a.assetId;
