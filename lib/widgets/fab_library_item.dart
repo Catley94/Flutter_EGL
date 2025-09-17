@@ -9,6 +9,7 @@ class FabLibraryItem extends StatelessWidget {
   final bool downloaded;
   final String? thumbnailUrl;
   final VoidCallback? onTap;
+  final bool useWarningStyle; // when true, style primary button in warning (yellow)
 
   const FabLibraryItem({
     required this.title,
@@ -19,6 +20,7 @@ class FabLibraryItem extends StatelessWidget {
     this.downloaded = false,
     this.thumbnailUrl,
     this.onTap,
+    this.useWarningStyle = false,
   });
 
   @override
@@ -97,6 +99,12 @@ class FabLibraryItem extends StatelessWidget {
                 SizedBox(
                   height: 36,
                   child: FilledButton.icon(
+                    style: useWarningStyle
+                        ? FilledButton.styleFrom(
+                            backgroundColor: Colors.blueGrey.shade700,
+                            foregroundColor: Colors.black,
+                          )
+                        : null,
                     onPressed: isBusy
                         ? null
                         : (onPrimaryPressed ?? () {

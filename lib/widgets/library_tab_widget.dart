@@ -649,6 +649,14 @@ class _CreateParams {
 class _FabAssetsGridState extends State<_FabAssetsGrid> {
   // Cached highest installed UE version string like '5.6' or '4.27'
   String? _maxInstalledUe;
+  // Cached set of installed major.minor versions, e.g., {'5.6','5.5'}
+  Set<String>? _installedMmSet;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInstalledMm();
+  }
 
   // Parse UE version tokens from strings like 'UE_5.6', '5.6', '5.6.1'. Returns [major, minor, patch].
   List<int>? _parseUeVersion(String v) {
@@ -660,6 +668,26 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
     if (m == null) return null;
     int p(String? x) => int.tryParse(x ?? '') ?? 0;
     return [p(m.group(1)), p(m.group(2)), p(m.group(3))];
+  }
+
+  String _mmFromVersion(String v) {
+    final pr = _parseUeVersion(v) ?? [0, 0, 0];
+    return '${pr[0]}.${pr[1]}';
+  }
+
+  Future<void> _loadInstalledMm() async {
+    try {
+      final engines = await _api.listUnrealEngines();
+      final set = <String>{};
+      for (final e in engines) {
+        final v = e.version.trim();
+        if (v.isEmpty) continue;
+        set.add(_mmFromVersion(v));
+      }
+      if (mounted) setState(() => _installedMmSet = set);
+    } catch (_) {
+      // ignore
+    }
   }
 
   int _cmpUeVersions(String a, String b) {
@@ -717,6 +745,16 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
       return null;
     }
   }
+
+  Future<bool> _projectHasSupportInstalled(FabAsset a) async {
+    if (_installedMmSet == null) {
+      await _loadInstalledMm();
+    }
+    final installed = _installedMmSet ?? <String>{};
+    final supported = _supportedMajorMinorSet(a);
+    return installed.intersection(supported).isNotEmpty;
+  }
+
   String _makeJobId() {
     final r = Random();
     final ts = DateTime.now().millisecondsSinceEpoch;
@@ -1242,6 +1280,9 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
       itemBuilder: (context, index) {
         final globalIndex = start + index;
         final a = widget.assets[globalIndex];
+        // Determine if this COMPLETE_PROJECT item lacks any compatible installed engines
+        final supportedSet = _supportedMajorMinorSet(a);
+        final warnNoSupport = a.isCompleteProject && (_installedMmSet != null) && _installedMmSet!.intersection(supportedSet).isEmpty;
         return FabLibraryItem(
           title: a.title.isNotEmpty ? a.title : a.assetId,
           sizeLabel: a.shortEngineLabel.isNotEmpty ? a.shortEngineLabel : '${a.assetNamespace}/${a.assetId}',
@@ -1249,9 +1290,35 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
           downloaded: a.anyDownloaded,
           isBusy: _busy.contains(globalIndex),
           thumbnailUrl: _pickThumbnailUrl(a),
+          useWarningStyle: warnNoSupport,
           onTap: () => _showAssetGalleryDialog(context, a),
           onPrimaryPressed: () async {
             if (a.isCompleteProject) {
+              // If no installed UE versions match this project's supported versions, warn and abort
+              try {
+                final hasSupport = await _projectHasSupportInstalled(a);
+                if (!hasSupport) {
+                  final latest = _maxSupportedForAsset(a) ?? '';
+                  if (mounted) {
+                    await showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('No supported Unreal Engine installed'),
+                        content: Text(latest.isNotEmpty
+                            ? 'There are no installed versions of Unreal Engine supported by this project. Please download the latest supported version: UE $latest.'
+                            : 'There are no installed versions of Unreal Engine supported by this project. Please install a supported version.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+                        ],
+                      ),
+                    );
+                  }
+                  return;
+                }
+              } catch (_) {
+                // If check fails, continue to prompt; user can decide engine path manually
+              }
+
               final params = await _promptCreateProject(context, a);
               if (params == null) return;
               setState(() => _busy.add(globalIndex));
