@@ -842,7 +842,8 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                       Row(
                         children: [
                           Expanded(child: Text(message, overflow: TextOverflow.ellipsis)),
-                          if (percent != null) Text('${p.toStringAsFixed(0)}%'),
+                          // if (percent != null) Text('${p.toStringAsFixed(0)}%'), // Rounds up from 99.5 to 100
+                          if (percent != null) Text('${p.floor.toString()}%'), // Test as this should keep it at 99% until 100%
                         ],
                       ),
                     ],
