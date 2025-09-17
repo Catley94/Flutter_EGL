@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -69,7 +70,54 @@ class ApiService {
     final projects = (data['projects'] as List<dynamic>? ?? [])
         .map((e) => UnrealProjectInfo.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    // Enrich missing engine version by inspecting the .uproject file's EngineAssociation
+    for (var i = 0; i < projects.length; i++) {
+      final p = projects[i];
+      if (p.engineVersion.isEmpty) {
+        final path = p.uprojectFile.isNotEmpty ? p.uprojectFile : p.path;
+        if (path.isNotEmpty) {
+          try {
+            final f = File(path);
+            if (await f.exists()) {
+              final txt = await f.readAsString();
+              final dynamic decoded = jsonDecode(txt);
+              if (decoded is Map<String, dynamic>) {
+                final assoc = decoded['EngineAssociation']?.toString() ?? '';
+                final norm = _normalizeEngineAssociation(assoc);
+                if (norm.isNotEmpty) {
+                  projects[i] = UnrealProjectInfo(
+                    name: p.name,
+                    path: p.path,
+                    uprojectFile: p.uprojectFile,
+                    engineVersion: norm,
+                  );
+                }
+              }
+            }
+          } catch (_) {
+            // Ignore read/parse errors silently; leave version unknown
+          }
+        }
+      }
+    }
+
     return projects;
+  }
+
+  String _normalizeEngineAssociation(String assoc) {
+    var s = assoc.trim();
+    if (s.isEmpty) return '';
+    if (s.startsWith('UE_')) s = s.substring(3);
+    // Accept patterns like 5, 5.4, 5.4.1
+    final m = RegExp(r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?$').firstMatch(s);
+    if (m != null) {
+      final maj = m.group(1) ?? '0';
+      final min = m.group(2) ?? '0';
+      return '$maj.$min';
+    }
+    // Unknown format (likely GUID); can't resolve client-side
+    return '';
   }
 
   Future<Map<String, dynamic>> getPathsConfig() async {

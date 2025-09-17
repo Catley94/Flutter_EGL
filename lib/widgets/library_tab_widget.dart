@@ -368,7 +368,7 @@ class _LibraryTabState extends State<LibraryTab> {
                         final p = projects[index];
                         return _ProjectTile(
                           name: p.name.isEmpty ? p.uprojectFile.split('/').last : p.name,
-                          version: '',
+                          version: p.engineVersion.isNotEmpty ? 'UE ${p.engineVersion}' : 'UE unknown',
                           color: Color.lerp(
                             const Color(0xFF1F2933),
                             cs.primary,
@@ -843,7 +843,7 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                         children: [
                           Expanded(child: Text(message, overflow: TextOverflow.ellipsis)),
                           // if (percent != null) Text('${p.toStringAsFixed(0)}%'), // Rounds up from 99.5 to 100
-                          if (percent != null) Text('${p.floor.toString()}%'), // Test as this should keep it at 99% until 100%
+                          if (percent != null) Text('${p.floor().toString()}%'), // Test as this should keep it at 99% until 100%
                         ],
                       ),
                     ],
