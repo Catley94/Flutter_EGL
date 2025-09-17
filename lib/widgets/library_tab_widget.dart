@@ -16,11 +16,14 @@ class LibraryTab extends StatefulWidget {
   State<LibraryTab> createState() => _LibraryTabState();
 }
 
+enum AssetSortMode { newerUEFirst, olderUEFirst, alphaAZ, alphaZA }
+
 class _LibraryTabState extends State<LibraryTab> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
   String _versionFilter = '';
   bool _onlyCompleteProjects = false;
+  AssetSortMode _sortMode = AssetSortMode.newerUEFirst;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<_FabAssetsGridState> _fabKey = GlobalKey<_FabAssetsGridState>();
   late final ApiService _api;
@@ -513,6 +516,25 @@ class _LibraryTabState extends State<LibraryTab> {
                           selected: _onlyCompleteProjects,
                           onSelected: (v) => setState(() => _onlyCompleteProjects = v),
                         ),
+                        const SizedBox(width: 12),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          child: DropdownButtonFormField<AssetSortMode>(
+                            value: _sortMode,
+                            items: const [
+                              DropdownMenuItem(value: AssetSortMode.newerUEFirst, child: Text('Sort: Newer UE first')),
+                              DropdownMenuItem(value: AssetSortMode.olderUEFirst, child: Text('Sort: Older UE first')),
+                              DropdownMenuItem(value: AssetSortMode.alphaAZ, child: Text('Sort: Alphabetical A–Z')),
+                              DropdownMenuItem(value: AssetSortMode.alphaZA, child: Text('Sort: Alphabetical Z–A')),
+                            ],
+                            onChanged: (v) => setState(() => _sortMode = v ?? AssetSortMode.newerUEFirst),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Sort by',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
                       ],
                     );
                   },
@@ -573,11 +595,63 @@ class _LibraryTabState extends State<LibraryTab> {
                             for (final ev in pv.engineVersions) {
                               final parts = ev.split('_');
                               if (parts.length > 1 && parts[1] == v) return true;
+                              // Also handle plain '5.6' without prefix
+                              if (parts.length == 1 && ev == v) return true;
                             }
                           }
                           return false;
                         }
                         filtered = filtered.where((a) => supportsVersion(a, vf)).toList();
+                      }
+                      // Sort according to user selection
+                      int versionScoreOf(String ver) {
+                        // Accept formats like '5.6', '5', 'UE_5.6'
+                        String v = ver;
+                        if (v.contains('_')) {
+                          final p = v.split('_');
+                          if (p.length > 1) v = p[1];
+                        }
+                        final parts = v.split('.');
+                        int major = 0;
+                        int minor = 0;
+                        if (parts.isNotEmpty) major = int.tryParse(parts[0]) ?? 0;
+                        if (parts.length > 1) minor = int.tryParse(parts[1]) ?? 0;
+                        return major * 100 + minor; // 5.6 -> 506
+                      }
+                      int maxSupportedVersionScore(FabAsset a) {
+                        int maxScore = -1;
+                        for (final pv in a.projectVersions) {
+                          for (final ev in pv.engineVersions) {
+                            final s = versionScoreOf(ev);
+                            if (s > maxScore) maxScore = s;
+                          }
+                        }
+                        return maxScore;
+                      }
+                      int titleCompare(FabAsset a, FabAsset b) => a.title.toLowerCase().compareTo(b.title.toLowerCase());
+                      switch (_sortMode) {
+                        case AssetSortMode.alphaAZ:
+                          filtered.sort(titleCompare);
+                          break;
+                        case AssetSortMode.alphaZA:
+                          filtered.sort((a, b) => titleCompare(b, a));
+                          break;
+                        case AssetSortMode.olderUEFirst:
+                          filtered.sort((a, b) {
+                            final av = maxSupportedVersionScore(a);
+                            final bv = maxSupportedVersionScore(b);
+                            if (av != bv) return av.compareTo(bv); // older first
+                            return titleCompare(a, b);
+                          });
+                          break;
+                        case AssetSortMode.newerUEFirst:
+                        default:
+                          filtered.sort((a, b) {
+                            final av = maxSupportedVersionScore(a);
+                            final bv = maxSupportedVersionScore(b);
+                            if (av != bv) return bv.compareTo(av); // newer first
+                            return titleCompare(a, b);
+                          });
                       }
                       if (filtered.isEmpty) {
                         return const Padding(
