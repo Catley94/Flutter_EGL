@@ -987,6 +987,7 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setStateSB) {
+            bool working = false;
             return AlertDialog(
               contentPadding: const EdgeInsets.all(12),
               title: Text(a.title.isNotEmpty ? a.title : a.assetId),
@@ -995,6 +996,10 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                   final size = MediaQuery.of(context).size;
                   final dialogWidth = (size.width * 0.9).clamp(300.0, 900.0);
                   final dialogHeight = (size.height * 0.9).clamp(300.0, 700.0);
+                  final cs = Theme.of(context).colorScheme;
+                  // Compose extra meta
+                  String dist = a.distributionMethod.isNotEmpty ? a.distributionMethod : '';
+                  String idNs = '${a.assetNamespace}/${a.assetId}';
                   return SizedBox(
                     width: dialogWidth,
                     height: dialogHeight,
@@ -1027,48 +1032,165 @@ class _FabAssetsGridState extends State<_FabAssetsGrid> {
                                   ),
                           ),
                         ),
-                    const SizedBox(height: 8),
-                    if (images.length > 1)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(images.length, (i) {
-                          final active = i == index;
-                          return Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: active ? 10 : 8,
-                            height: active ? 10 : 8,
-                            decoration: BoxDecoration(
-                              color: active ? Theme.of(context).colorScheme.primary : const Color(0xFF39424C),
-                              shape: BoxShape.circle,
+                        const SizedBox(height: 8),
+                        if (images.length > 1)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(images.length, (i) {
+                              final active = i == index;
+                              return Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                width: active ? 10 : 8,
+                                height: active ? 10 : 8,
+                                decoration: BoxDecoration(
+                                  color: active ? Theme.of(context).colorScheme.primary : const Color(0xFF39424C),
+                                  shape: BoxShape.circle,
+                                ),
+                              );
+                            }),
+                          ),
+                        const SizedBox(height: 12),
+                        // Meta row
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (dist.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceVariant,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF1A2027)),
+                                ),
+                                child: Text(dist, style: Theme.of(context).textTheme.labelSmall),
+                              ),
+                            if (a.shortEngineLabel.isNotEmpty)
+                              Text(a.shortEngineLabel, style: Theme.of(context).textTheme.bodySmall),
+                            Text(idNs, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          flex: 0,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 140),
+                            child: SingleChildScrollView(
+                              child: Text(
+                                a.description.isNotEmpty ? a.description : 'No description provided.',
+                              ),
                             ),
-                          );
-                        }),
-                      ),
-                    const SizedBox(height: 12),
-                    Text(
-                      a.description.isNotEmpty ? a.description : 'No description provided.',
-                      maxLines: 5,
-                      overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    if (a.shortEngineLabel.isNotEmpty)
-                      Text(a.shortEngineLabel, style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              );
-            },
-          ),
+                  );
+                },
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: const Text('Close'),
                 ),
                 if ((a.url ?? '').isNotEmpty)
-                  FilledButton.icon(
+                  TextButton.icon(
                     onPressed: () => _launchExternal(a.url!),
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('View on FAB.com'),
+                    label: const Text('Open listing'),
                   ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: working
+                      ? null
+                      : () async {
+                          setStateSB(() => working = true);
+                          try {
+                            if (a.isCompleteProject) {
+                              // Check installed support and prompt create
+                              try {
+                                final hasSupport = await _projectHasSupportInstalled(a);
+                                if (!hasSupport) {
+                                  final latest = _maxSupportedForAsset(a) ?? '';
+                                  if (mounted) {
+                                    await showDialog<void>(
+                                      context: context,
+                                      builder: (dctx) => AlertDialog(
+                                        title: const Text('No supported Unreal Engine installed'),
+                                        content: Text(latest.isNotEmpty
+                                            ? 'There are no installed versions of Unreal Engine supported by this project. Please download the latest supported version: UE $latest.'
+                                            : 'There are no installed versions of Unreal Engine supported by this project. Please install a supported version.'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.of(dctx).pop(), child: const Text('OK')),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                  setStateSB(() => working = false);
+                                  return;
+                                }
+                              } catch (_) {}
+                              final params = await _promptCreateProject(context, a);
+                              if (params == null) { setStateSB(() => working = false); return; }
+                              final jobId = _makeJobId();
+                              final dlg = _showJobProgressDialog(jobId: jobId, title: 'Creating project...');
+                              final res = await _api.createUnrealProject(
+                                enginePath: params.enginePath,
+                                templateProject: params.templateProject,
+                                assetName: params.assetName,
+                                outputDir: params.outputDir,
+                                projectName: params.projectName,
+                                projectType: params.projectType,
+                                dryRun: params.dryRun,
+                                jobId: jobId,
+                              );
+                              if (mounted) {
+                                final nav = Navigator.of(context, rootNavigator: true);
+                                if (nav.canPop()) nav.pop();
+                              }
+                              await dlg.catchError((_){ });
+                              if (mounted) {
+                                final ok = res.ok;
+                                final msg = res.message.isNotEmpty ? res.message : (ok ? 'OK' : 'Failed');
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                                if (ok && !params.dryRun) {
+                                  widget.onProjectsChanged?.call();
+                                }
+                              }
+                            } else {
+                              final params = await _promptImport(context, a);
+                              if (params == null) { setStateSB(() => working = false); return; }
+                              final jobId = _makeJobId();
+                              final dlg = _showJobProgressDialog(jobId: jobId, title: 'Importing asset...');
+                              final res = await _api.importAsset(
+                                assetName: a.title.isNotEmpty ? a.title : a.assetId,
+                                project: params.project,
+                                targetSubdir: params.targetSubdir,
+                                overwrite: params.overwrite,
+                                jobId: jobId,
+                              );
+                              if (mounted) {
+                                final nav = Navigator.of(context, rootNavigator: true);
+                                if (nav.canPop()) nav.pop();
+                              }
+                              await dlg.catchError((_){ });
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(res.message.isNotEmpty ? res.message : (res.success ? 'Import started' : 'Import failed'))),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Action failed: $e')));
+                            }
+                          } finally {
+                            if (mounted) setStateSB(() => working = false);
+                          }
+                        },
+                  icon: Icon(a.isCompleteProject ? Icons.add : Icons.download),
+                  label: Text(a.isCompleteProject ? 'Create Project' : 'Import Asset'),
+                ),
               ],
             );
           },
